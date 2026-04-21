@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pocket Pilot — Personal Budget Tracker</title>
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" defer></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark">PP</div>
+      <div class="brand-text">
+        <div class="brand-name">Pocket Pilot</div>
+        <div class="brand-tag">your money, your map</div>
+      </div>
+    </div>
+
+    <nav class="nav">
+      <button class="nav-item active" data-view="dashboard">
+        <span class="nav-icon">◐</span> Dashboard
+      </button>
+      <button class="nav-item" data-view="transactions">
+        <span class="nav-icon">≡</span> Transactions
+      </button>
+      <button class="nav-item" data-view="budgets">
+        <span class="nav-icon">◇</span> Budgets
+      </button>
+      <button class="nav-item" data-view="categories">
+        <span class="nav-icon">◎</span> Categories
+      </button>
+      <button class="nav-item" data-view="settings">
+        <span class="nav-icon">⚙</span> Settings
+      </button>
+    </nav>
+
+    <div class="month-picker">
+      <button id="prev-month" aria-label="Previous month">‹</button>
+      <div id="current-month" class="current-month"></div>
+      <button id="next-month" aria-label="Next month">›</button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <!-- DASHBOARD -->
+    <section id="view-dashboard" class="view active">
+      <header class="view-header">
+        <div>
+          <h1>Dashboard</h1>
+          <p class="subtitle" id="dashboard-subtitle"></p>
+        </div>
+        <button class="btn primary" data-action="quick-add">+ Add Transaction</button>
+      </header>
+
+      <div class="stat-grid">
+        <div class="stat-card">
+          <div class="stat-label">Income</div>
+          <div class="stat-value income" id="stat-income">$0.00</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Expenses</div>
+          <div class="stat-value expense" id="stat-expenses">$0.00</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Net</div>
+          <div class="stat-value" id="stat-net">$0.00</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Budget Remaining</div>
+          <div class="stat-value" id="stat-remaining">$0.00</div>
+        </div>
+      </div>
+
+      <div class="panel-grid">
+        <div class="panel">
+          <div class="panel-header">
+            <h2>Spending by Category</h2>
+          </div>
+          <div class="chart-wrap">
+            <canvas id="chart-category"></canvas>
+            <div class="chart-empty" id="chart-category-empty">No expenses yet this month.</div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header">
+            <h2>Budget Progress</h2>
+          </div>
+          <div id="budget-progress" class="budget-progress"></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header">
+          <h2>Recent Transactions</h2>
+          <button class="link" data-view-link="transactions">View all →</button>
+        </div>
+        <div id="recent-transactions" class="tx-list"></div>
+      </div>
+    </section>
+
+    <!-- TRANSACTIONS -->
+    <section id="view-transactions" class="view">
+      <header class="view-header">
+        <div>
+          <h1>Transactions</h1>
+          <p class="subtitle" id="tx-subtitle"></p>
+        </div>
+        <button class="btn primary" data-action="quick-add">+ Add Transaction</button>
+      </header>
+
+      <div class="filters">
+        <input type="search" id="tx-search" placeholder="Search description, notes…" />
+        <select id="tx-filter-category">
+          <option value="">All categories</option>
+        </select>
+        <select id="tx-filter-type">
+          <option value="">All types</option>
+          <option value="expense">Expense</option>
+          <option value="income">Income</option>
+        </select>
+      </div>
+
+      <div class="panel">
+        <div id="transactions-list" class="tx-list full"></div>
+      </div>
+    </section>
+
+    <!-- BUDGETS -->
+    <section id="view-budgets" class="view">
+      <header class="view-header">
+        <div>
+          <h1>Budgets</h1>
+          <p class="subtitle">Set a monthly spending target for each category.</p>
+        </div>
+      </header>
+
+      <div class="panel">
+        <div id="budgets-list" class="budgets-list"></div>
+      </div>
+    </section>
+
+    <!-- CATEGORIES -->
+    <section id="view-categories" class="view">
+      <header class="view-header">
+        <div>
+          <h1>Categories</h1>
+          <p class="subtitle">Customize how you group your spending and income.</p>
+        </div>
+        <button class="btn primary" data-action="add-category">+ New Category</button>
+      </header>
+
+      <div class="panel">
+        <div id="categories-list" class="categories-list"></div>
+      </div>
+    </section>
+
+    <!-- SETTINGS -->
+    <section id="view-settings" class="view">
+      <header class="view-header">
+        <div>
+          <h1>Settings</h1>
+          <p class="subtitle">Your data lives only in this browser. Back it up often.</p>
+        </div>
+      </header>
+
+      <div class="panel">
+        <div class="settings-row">
+          <div>
+            <h3>Currency</h3>
+            <p class="hint">Displayed across the app.</p>
+          </div>
+          <select id="setting-currency">
+            <option value="USD">USD — US Dollar</option>
+            <option value="EUR">EUR — Euro</option>
+            <option value="GBP">GBP — British Pound</option>
+            <option value="MXN">MXN — Mexican Peso</option>
+            <option value="CAD">CAD — Canadian Dollar</option>
+            <option value="JPY">JPY — Japanese Yen</option>
+          </select>
+        </div>
+
+        <div class="settings-row">
+          <div>
+            <h3>Export data</h3>
+            <p class="hint">Download a JSON backup of everything.</p>
+          </div>
+          <button class="btn" id="btn-export">Download JSON</button>
+        </div>
+
+        <div class="settings-row">
+          <div>
+            <h3>Import data</h3>
+            <p class="hint">Restore from a previously exported JSON backup.</p>
+          </div>
+          <label class="btn">
+            Choose file
+            <input type="file" id="file-import" accept="application/json" hidden />
+          </label>
+        </div>
+
+        <div class="settings-row">
+          <div>
+            <h3>Import transactions (CSV)</h3>
+            <p class="hint">Columns: date, description, amount, type, category, notes.</p>
+          </div>
+          <label class="btn">
+            Choose CSV
+            <input type="file" id="file-import-csv" accept=".csv,text/csv" hidden />
+          </label>
+        </div>
+
+        <div class="settings-row danger">
+          <div>
+            <h3>Reset everything</h3>
+            <p class="hint">Permanently delete all transactions, budgets, and categories.</p>
+          </div>
+          <button class="btn danger" id="btn-reset">Reset</button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- TRANSACTION MODAL -->
+  <div class="modal-backdrop" id="tx-modal" hidden>
+    <div class="modal">
+      <header class="modal-header">
+        <h2 id="tx-modal-title">New transaction</h2>
+        <button class="icon-btn" data-close-modal>×</button>
+      </header>
+      <form id="tx-form" class="modal-body">
+        <input type="hidden" name="id" />
+        <div class="field-row">
+          <label class="field">
+            <span>Type</span>
+            <div class="segmented">
+              <input type="radio" name="type" id="tx-type-expense" value="expense" checked />
+              <label for="tx-type-expense">Expense</label>
+              <input type="radio" name="type" id="tx-type-income" value="income" />
+              <label for="tx-type-income">Income</label>
+            </div>
+          </label>
+          <label class="field">
+            <span>Amount</span>
+            <input type="number" name="amount" step="0.01" min="0" required placeholder="0.00" />
+          </label>
+        </div>
+        <label class="field">
+          <span>Description</span>
+          <input type="text" name="description" required placeholder="e.g. Grocery run" />
+        </label>
+        <div class="field-row">
+          <label class="field">
+            <span>Date</span>
+            <input type="date" name="date" required />
+          </label>
+          <label class="field">
+            <span>Category</span>
+            <select name="categoryId" required></select>
+          </label>
+        </div>
+        <label class="field">
+          <span>Notes (optional)</span>
+          <textarea name="notes" rows="2" placeholder="Anything worth remembering…"></textarea>
+        </label>
+        <footer class="modal-footer">
+          <button type="button" class="btn ghost" id="tx-delete" hidden>Delete</button>
+          <div class="spacer"></div>
+          <button type="button" class="btn" data-close-modal>Cancel</button>
+          <button type="submit" class="btn primary">Save</button>
+        </footer>
+      </form>
+    </div>
+  </div>
+
+  <!-- CATEGORY MODAL -->
+  <div class="modal-backdrop" id="cat-modal" hidden>
+    <div class="modal">
+      <header class="modal-header">
+        <h2 id="cat-modal-title">New category</h2>
+        <button class="icon-btn" data-close-modal>×</button>
+      </header>
+      <form id="cat-form" class="modal-body">
+        <input type="hidden" name="id" />
+        <label class="field">
+          <span>Name</span>
+          <input type="text" name="name" required placeholder="e.g. Coffee" />
+        </label>
+        <div class="field-row">
+          <label class="field">
+            <span>Type</span>
+            <select name="type">
+              <option value="expense">Expense</option>
+              <option value="income">Income</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Color</span>
+            <input type="color" name="color" value="#6366f1" />
+          </label>
+        </div>
+        <label class="field">
+          <span>Icon (any single character or emoji)</span>
+          <input type="text" name="icon" maxlength="2" placeholder="🍔" />
+        </label>
+        <footer class="modal-footer">
+          <button type="button" class="btn ghost" id="cat-delete" hidden>Delete</button>
+          <div class="spacer"></div>
+          <button type="button" class="btn" data-close-modal>Cancel</button>
+          <button type="submit" class="btn primary">Save</button>
+        </footer>
+      </form>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" hidden></div>
+</body>
+</html>
