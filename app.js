@@ -600,6 +600,238 @@
     renderCurrentView();
   }
 
+  // ---------- CSV IMPORT — bank detection + mapping modal ----------
+
+  const BANK_FORMATS = [
+    {
+      name: 'Chase',
+      detect: h => h.includes('transaction date') && h.includes('post date'),
+      map: { date: 'transaction date', description: 'description', amount: 'amount', notes: 'memo' },
+      amountMode: 'single',
+    },
+    {
+      name: 'Bank of America',
+      detect: h => h.some(c => c.includes('running bal')),
+      map: { date: 'date', description: 'description', amount: 'amount' },
+      amountMode: 'single',
+    },
+    {
+      name: 'Wells Fargo',
+      detect: h => h.length <= 5 && h.includes('date') && h.includes('amount') && h.some(c => c === '*' || c === ''),
+      map: { date: 'date', description: 'description', amount: 'amount' },
+      amountMode: 'single',
+    },
+    {
+      name: 'Citi',
+      detect: h => h.includes('debit') && h.includes('credit') && !h.includes('card no.'),
+      map: { date: 'date', description: 'description', debit: 'debit', credit: 'credit' },
+      amountMode: 'debitcredit',
+    },
+    {
+      name: 'Capital One',
+      detect: h => h.includes('card no.') || (h.includes('transaction date') && h.includes('debit') && h.includes('credit')),
+      map: { date: 'transaction date', description: 'description', debit: 'debit', credit: 'credit', notes: 'category' },
+      amountMode: 'debitcredit',
+    },
+  ];
+
+  // Holds parsed CSV state while the mapping modal is open
+  let csvImportState = null;
+
+  function openCSVImportModal(file) {
+    file.text().then(text => {
+      const rows = parseCSV(text);
+      if (rows.length < 2) { alert('CSV appears to be empty or has only a header.'); return; }
+
+      const rawHeaders = rows[0];
+      const headers = rawHeaders.map(s => s.trim().toLowerCase());
+      const dataRows = rows.slice(1).filter(r => r.some(c => c.trim() !== ''));
+
+      // Detect bank format
+      const detected = BANK_FORMATS.find(f => f.detect(headers));
+
+      csvImportState = { headers, rawHeaders, dataRows, detected, amountMode: detected?.amountMode ?? 'single' };
+
+      // Populate column selects
+      const none = '<option value="">— skip —</option>';
+      const opts = rawHeaders.map((h, i) => `<option value="${i}">${escapeHTML(h) || `Column ${i + 1}`}</option>`).join('');
+
+      ['map-date', 'map-description', 'map-amount', 'map-debit', 'map-credit', 'map-notes'].forEach(id => {
+        document.getElementById(id).innerHTML = none + opts;
+      });
+
+      // Apply detected mappings
+      if (detected) {
+        applyFormatMap(headers, detected.map);
+        setAmountMode(detected.amountMode);
+      }
+
+      document.getElementById('csv-format-badge').textContent = detected ? detected.name + ' detected' : '';
+
+      document.getElementById('csv-modal').hidden = false;
+      updateCSVPreview();
+    }).catch(e => alert('Could not read file: ' + e.message));
+  }
+
+  function applyFormatMap(headers, map) {
+    for (const [field, colName] of Object.entries(map)) {
+      const colIdx = headers.indexOf(colName);
+      if (colIdx < 0) continue;
+      const elId = field === 'debit' ? 'map-debit'
+        : field === 'credit' ? 'map-credit'
+        : field === 'notes' ? 'map-notes'
+        : `map-${field}`;
+      const el = document.getElementById(elId);
+      if (el) el.value = String(colIdx);
+    }
+  }
+
+  function setAmountMode(mode) {
+    csvImportState.amountMode = mode;
+    document.getElementById('am-single').checked = mode === 'single';
+    document.getElementById('am-debitcredit').checked = mode === 'debitcredit';
+    document.getElementById('map-single-row').hidden = mode !== 'single';
+    document.getElementById('map-dc-row').hidden = mode !== 'debitcredit';
+    document.getElementById('map-cr-row').hidden = mode !== 'debitcredit';
+  }
+
+  function getMapping() {
+    const v = id => { const s = document.getElementById(id).value; return s !== '' ? Number(s) : null; };
+    return {
+      date: v('map-date'),
+      description: v('map-description'),
+      amount: v('map-amount'),
+      debit: v('map-debit'),
+      credit: v('map-credit'),
+      notes: v('map-notes'),
+      amountMode: csvImportState.amountMode,
+    };
+  }
+
+  function parseCSVRow(row, m) {
+    const get = idx => (idx !== null && row[idx] !== undefined ? row[idx].trim() : '');
+    const dateStr = get(m.date);
+    const date = normalizeDate(dateStr);
+    const description = get(m.description) || 'Imported';
+    let amount, type;
+
+    if (m.amountMode === 'debitcredit') {
+      const debitStr = get(m.debit).replace(/[^0-9.\-]/g, '');
+      const creditStr = get(m.credit).replace(/[^0-9.\-]/g, '');
+      const debit = parseFloat(debitStr);
+      const credit = parseFloat(creditStr);
+      if (debit > 0) { amount = debit; type = 'expense'; }
+      else if (credit > 0) { amount = credit; type = 'income'; }
+      else return null;
+    } else {
+      const raw = get(m.amount).replace(/[^0-9.\-]/g, '');
+      const val = parseFloat(raw);
+      if (!val) return null;
+      amount = Math.abs(val);
+      type = val < 0 ? 'expense' : 'income';
+    }
+
+    return { date, description, amount, type, notes: get(m.notes) || undefined };
+  }
+
+  function updateCSVPreview() {
+    if (!csvImportState) return;
+    const m = getMapping();
+    const previewRows = csvImportState.dataRows.slice(0, 5);
+    const existingHashes = buildExistingHashes();
+
+    const tbody = previewRows.map(row => {
+      const parsed = (m.date !== null && m.description !== null) ? parseCSVRow(row, m) : null;
+      if (!parsed || !parsed.date) {
+        return `<tr><td class="td-skip" colspan="4">— cannot parse row —</td></tr>`;
+      }
+      const dupe = existingHashes.has(txHash(parsed));
+      const sign = parsed.type === 'income' ? '+' : '−';
+      const amtClass = parsed.type === 'income' ? 'td-income' : 'td-expense';
+      return `<tr>
+        <td>${escapeHTML(parsed.date)}</td>
+        <td title="${escapeHTML(parsed.description)}">${escapeHTML(parsed.description.slice(0, 30))}${parsed.description.length > 30 ? '…' : ''}</td>
+        <td class="td-amount ${amtClass}">${sign} ${fmtMoney(parsed.amount)}</td>
+        <td>${dupe ? '<span style="color:var(--text-faint)">duplicate</span>' : escapeHTML(parsed.type)}</td>
+      </tr>`;
+    }).join('');
+
+    document.getElementById('csv-preview-table').innerHTML = tbody
+      ? `<table class="preview-table"><thead><tr><th>Date</th><th>Description</th><th>Amount</th><th>Type</th></tr></thead><tbody>${tbody}</tbody></table>`
+      : `<div class="preview-empty">Map the required columns to see a preview.</div>`;
+
+    const total = csvImportState.dataRows.length;
+    document.getElementById('csv-preview-count').textContent = `(first 5 of ${total} rows)`;
+
+    // Count importable
+    const importable = csvImportState.dataRows.reduce((n, row) => {
+      const p = parseCSVRow(row, m);
+      return p && p.date && !existingHashes.has(txHash(p)) ? n + 1 : n;
+    }, 0);
+    const dupes = csvImportState.dataRows.reduce((n, row) => {
+      const p = parseCSVRow(row, m);
+      return p && p.date && existingHashes.has(txHash(p)) ? n + 1 : n;
+    }, 0);
+    document.getElementById('btn-do-import').textContent = `Import ${importable} transaction${importable === 1 ? '' : 's'}`;
+    document.getElementById('csv-import-summary').textContent =
+      dupes > 0 ? `${dupes} duplicate${dupes === 1 ? '' : 's'} will be skipped` : '';
+  }
+
+  function buildExistingHashes() {
+    const s = new Set();
+    state.transactions.forEach(t => s.add(txHash(t)));
+    return s;
+  }
+
+  function txHash(t) {
+    return `${t.date}|${t.amount}|${t.description.toLowerCase()}`;
+  }
+
+  function doCSVImport() {
+    if (!csvImportState) return;
+    const m = getMapping();
+    if (m.date === null || m.description === null) {
+      alert('Please map at least the Date and Description columns.'); return;
+    }
+    if (m.amountMode === 'single' && m.amount === null) {
+      alert('Please map the Amount column.'); return;
+    }
+    if (m.amountMode === 'debitcredit' && m.debit === null && m.credit === null) {
+      alert('Please map at least one of Debit or Credit columns.'); return;
+    }
+
+    const existingHashes = buildExistingHashes();
+    let added = 0, skipped = 0;
+
+    csvImportState.dataRows.forEach(row => {
+      const parsed = parseCSVRow(row, m);
+      if (!parsed || !parsed.date) { skipped++; return; }
+      if (existingHashes.has(txHash(parsed))) { skipped++; return; }
+
+      const catName = '';
+      let cat = state.categories.find(c => c.type === parsed.type && c.name.toLowerCase().startsWith('other'));
+      if (!cat) cat = state.categories.find(c => c.type === parsed.type);
+      if (!cat) { skipped++; return; }
+
+      state.transactions.push({
+        id: uid('tx'),
+        date: parsed.date,
+        amount: parsed.amount,
+        type: parsed.type,
+        categoryId: cat.id,
+        description: parsed.description,
+        notes: parsed.notes,
+      });
+      added++;
+    });
+
+    saveState();
+    closeModals();
+    csvImportState = null;
+    showToast(`Imported ${added} transaction${added === 1 ? '' : 's'}${skipped ? ` · ${skipped} skipped` : ''}`);
+    renderCurrentView();
+  }
+
   // ---------- IMPORT / EXPORT ----------
   function exportJSON() {
     const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
@@ -636,56 +868,8 @@
     }
   }
 
-  async function importCSV(file) {
-    try {
-      const text = await file.text();
-      const rows = parseCSV(text);
-      if (rows.length === 0) throw new Error('Empty CSV');
-      const header = rows[0].map(s => s.trim().toLowerCase());
-      const idx = {
-        date: header.indexOf('date'),
-        description: header.indexOf('description'),
-        amount: header.indexOf('amount'),
-        type: header.indexOf('type'),
-        category: header.indexOf('category'),
-        notes: header.indexOf('notes'),
-      };
-      if (idx.date < 0 || idx.description < 0 || idx.amount < 0) {
-        throw new Error('CSV must include date, description, amount columns');
-      }
-      let added = 0;
-      for (let i = 1; i < rows.length; i++) {
-        const row = rows[i];
-        if (row.length === 0 || (row.length === 1 && !row[0])) continue;
-        const dateRaw = (row[idx.date] || '').trim();
-        const date = normalizeDate(dateRaw);
-        if (!date) continue;
-        const amount = parseFloat((row[idx.amount] || '').replace(/[^0-9.\-]/g, ''));
-        if (!amount) continue;
-        const typeStr = (idx.type >= 0 ? (row[idx.type] || '') : '').trim().toLowerCase();
-        const type = typeStr === 'income' ? 'income' : (amount < 0 ? 'expense' : (typeStr === 'expense' ? 'expense' : 'expense'));
-        const catName = (idx.category >= 0 ? (row[idx.category] || '') : '').trim();
-        let cat = state.categories.find(c => c.name.toLowerCase() === catName.toLowerCase() && c.type === type);
-        if (!cat) cat = state.categories.find(c => c.type === type && c.name.toLowerCase().startsWith('other'));
-        if (!cat) cat = state.categories.find(c => c.type === type);
-        if (!cat) continue;
-        state.transactions.push({
-          id: uid('tx'),
-          date,
-          amount: Math.abs(amount),
-          type,
-          categoryId: cat.id,
-          description: (row[idx.description] || '').trim() || 'Imported',
-          notes: (idx.notes >= 0 ? (row[idx.notes] || '').trim() : undefined) || undefined,
-        });
-        added++;
-      }
-      saveState();
-      renderCurrentView();
-      showToast(`Imported ${added} transaction${added === 1 ? '' : 's'}`);
-    } catch (e) {
-      alert('CSV import failed: ' + e.message);
-    }
+  function importCSV(file) {
+    openCSVImportModal(file);
   }
 
   function normalizeDate(s) {
@@ -839,6 +1023,48 @@
       e.target.value = '';
     });
     document.getElementById('btn-reset').addEventListener('click', resetAll);
+
+    // CSV mapping modal interactions
+    document.getElementById('btn-do-import').addEventListener('click', doCSVImport);
+    document.querySelectorAll('input[name="amount-mode"]').forEach(radio => {
+      radio.addEventListener('change', () => {
+        if (!csvImportState) return;
+        setAmountMode(radio.value);
+        updateCSVPreview();
+      });
+    });
+    ['map-date', 'map-description', 'map-amount', 'map-debit', 'map-credit', 'map-notes'].forEach(id => {
+      document.getElementById(id).addEventListener('change', updateCSVPreview);
+    });
+
+    // Drag-and-drop CSV onto the whole app
+    let dragCounter = 0;
+    const overlay = document.getElementById('drop-overlay');
+    document.addEventListener('dragenter', (e) => {
+      if ([...e.dataTransfer.items].some(i => i.kind === 'file')) {
+        dragCounter++;
+        overlay.hidden = false;
+      }
+    });
+    document.addEventListener('dragleave', () => {
+      dragCounter--;
+      if (dragCounter <= 0) { dragCounter = 0; overlay.hidden = true; }
+    });
+    document.addEventListener('dragover', (e) => e.preventDefault());
+    document.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dragCounter = 0;
+      overlay.hidden = true;
+      const file = e.dataTransfer.files[0];
+      if (!file) return;
+      if (file.name.endsWith('.csv') || file.type === 'text/csv') {
+        importCSV(file);
+      } else if (file.name.endsWith('.json') || file.type === 'application/json') {
+        importJSON(file);
+      } else {
+        showToast('Drop a .csv or .json file');
+      }
+    });
 
     refreshCategoryFilter();
     renderSettings();

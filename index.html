@@ -207,7 +207,7 @@
         <div class="settings-row">
           <div>
             <h3>Import transactions (CSV)</h3>
-            <p class="hint">Columns: date, description, amount, type, category, notes.</p>
+            <p class="hint">Supports Chase, BofA, Wells Fargo, Citi, Capital One — or map columns manually. You can also drag a CSV anywhere onto the app.</p>
           </div>
           <label class="btn">
             Choose CSV
@@ -315,6 +315,77 @@
           <button type="submit" class="btn primary">Save</button>
         </footer>
       </form>
+    </div>
+  </div>
+
+  <!-- CSV IMPORT MODAL -->
+  <div class="modal-backdrop" id="csv-modal" hidden>
+    <div class="modal modal-wide">
+      <header class="modal-header">
+        <div>
+          <h2>Import CSV</h2>
+          <span id="csv-format-badge" class="format-badge"></span>
+        </div>
+        <button class="icon-btn" data-close-modal>×</button>
+      </header>
+      <div class="modal-body">
+        <p class="hint">Map your CSV columns to the fields below, then check the preview.</p>
+
+        <div class="mapping-grid">
+          <div class="mapping-row">
+            <label class="mapping-label">Date <span class="req">*</span></label>
+            <select id="map-date" class="map-select"></select>
+          </div>
+          <div class="mapping-row">
+            <label class="mapping-label">Description <span class="req">*</span></label>
+            <select id="map-description" class="map-select"></select>
+          </div>
+          <div class="mapping-row">
+            <label class="mapping-label">Amount mode <span class="req">*</span></label>
+            <div class="segmented" style="max-width:260px">
+              <input type="radio" name="amount-mode" id="am-single" value="single" checked />
+              <label for="am-single">Single column</label>
+              <input type="radio" name="amount-mode" id="am-debitcredit" value="debitcredit" />
+              <label for="am-debitcredit">Debit / Credit</label>
+            </div>
+          </div>
+          <div class="mapping-row" id="map-single-row">
+            <label class="mapping-label">Amount column</label>
+            <select id="map-amount" class="map-select"></select>
+          </div>
+          <div class="mapping-row" id="map-dc-row" hidden>
+            <label class="mapping-label">Debit (expenses)</label>
+            <select id="map-debit" class="map-select"></select>
+          </div>
+          <div class="mapping-row" id="map-cr-row" hidden>
+            <label class="mapping-label">Credit (income)</label>
+            <select id="map-credit" class="map-select"></select>
+          </div>
+          <div class="mapping-row">
+            <label class="mapping-label">Notes (optional)</label>
+            <select id="map-notes" class="map-select"></select>
+          </div>
+        </div>
+
+        <div class="preview-section">
+          <h3 style="margin-bottom:10px">Preview <span id="csv-preview-count" class="text-faint"></span></h3>
+          <div id="csv-preview-table" class="preview-table-wrap"></div>
+        </div>
+      </div>
+      <footer class="modal-footer">
+        <span id="csv-import-summary" class="hint"></span>
+        <div class="spacer"></div>
+        <button class="btn" data-close-modal>Cancel</button>
+        <button class="btn primary" id="btn-do-import">Import</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- DRAG-DROP OVERLAY -->
+  <div id="drop-overlay" class="drop-overlay" hidden>
+    <div class="drop-inner">
+      <div class="drop-icon">⬇</div>
+      <div>Drop your CSV to import transactions</div>
     </div>
   </div>
 

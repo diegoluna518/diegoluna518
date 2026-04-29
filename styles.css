@@ -454,6 +454,110 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
   box-shadow: 0 1px 2px rgba(0,0,0,0.2);
 }
 
+/* CSV IMPORT MODAL */
+.modal-wide { max-width: 680px; }
+.modal-wide .modal-body { gap: 18px; }
+
+.format-badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  background: var(--accent-soft);
+  color: var(--accent);
+  padding: 2px 8px;
+  border-radius: 6px;
+  margin-top: 4px;
+}
+.format-badge:empty { display: none; }
+
+.mapping-grid { display: flex; flex-direction: column; gap: 10px; }
+.mapping-row {
+  display: grid;
+  grid-template-columns: 160px 1fr;
+  align-items: center;
+  gap: 12px;
+}
+.mapping-label {
+  font-size: 13px;
+  color: var(--text-dim);
+  font-weight: 500;
+}
+.mapping-label .req { color: var(--danger); }
+.map-select {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 7px 10px;
+  border-radius: 7px;
+  font: inherit;
+  font-size: 13px;
+  width: 100%;
+}
+
+.preview-section { border-top: 1px solid var(--border); padding-top: 14px; }
+.preview-table-wrap {
+  overflow-x: auto;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+.preview-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.preview-table th {
+  background: var(--bg-input);
+  color: var(--text-dim);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 8px 10px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.preview-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.preview-table tr:last-child td { border-bottom: none; }
+.preview-table .td-amount { font-variant-numeric: tabular-nums; font-weight: 600; }
+.preview-table .td-expense { color: var(--text); }
+.preview-table .td-income { color: var(--success); }
+.preview-table .td-skip { color: var(--text-faint); font-style: italic; }
+.preview-empty { padding: 24px; text-align: center; color: var(--text-faint); font-size: 13px; }
+
+.text-faint { color: var(--text-faint); font-weight: 400; font-size: 13px; }
+
+/* DRAG-DROP OVERLAY */
+.drop-overlay {
+  position: fixed; inset: 0;
+  z-index: 300;
+  background: rgba(5, 6, 10, 0.80);
+  backdrop-filter: blur(4px);
+  display: grid;
+  place-items: center;
+}
+.drop-overlay[hidden] { display: none; }
+.drop-inner {
+  border: 2px dashed var(--accent);
+  border-radius: 16px;
+  padding: 48px 64px;
+  text-align: center;
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 500;
+  pointer-events: none;
+}
+.drop-icon { font-size: 36px; margin-bottom: 12px; }
+
 /* TOAST */
 .toast {
   position: fixed;
