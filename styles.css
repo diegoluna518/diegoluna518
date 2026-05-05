@@ -21,6 +21,15 @@
 
 * { box-sizing: border-box; }
 
+/* Hide spinner arrows on number inputs everywhere */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  appearance: none;
+  margin: 0;
+}
+input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
+
 html, body {
   margin: 0;
   padding: 0;
@@ -453,6 +462,114 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
   color: var(--text);
   box-shadow: 0 1px 2px rgba(0,0,0,0.2);
 }
+
+/* CASH FLOW */
+.stat-grid-3 { grid-template-columns: repeat(3, 1fr); }
+
+.cashflow-table { display: flex; flex-direction: column; }
+.cf-row {
+  display: grid;
+  grid-template-columns: 1.5fr 1fr 1fr 1fr 1fr;
+  gap: 12px;
+  padding: 10px 8px;
+  border-bottom: 1px solid var(--border);
+  font-variant-numeric: tabular-nums;
+  align-items: center;
+}
+.cf-row:last-child { border-bottom: none; }
+.cf-row.cf-header {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-faint);
+  font-weight: 600;
+  border-bottom: 1px solid var(--border-strong);
+}
+.cf-row .cf-month { font-weight: 500; }
+.cf-row .cf-income-cell { color: var(--success); }
+.cf-row .cf-spend-cell { color: var(--danger); }
+.cf-row .cf-net-cell { font-weight: 600; }
+.cf-row .cf-rate-cell { color: var(--text-dim); }
+
+/* GOALS */
+.goals-list { display: flex; flex-direction: column; gap: 14px; }
+.goal-card {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.goal-card:hover { border-color: var(--border-strong); background: var(--bg-input); }
+.goal-head {
+  display: flex; align-items: center; gap: 12px;
+  margin-bottom: 10px;
+}
+.goal-icon {
+  width: 40px; height: 40px;
+  border-radius: 10px;
+  display: grid; place-items: center;
+  font-size: 18px; color: white;
+}
+.goal-name { font-weight: 600; font-size: 15px; }
+.goal-deadline { font-size: 12px; color: var(--text-faint); margin-top: 2px; }
+.goal-amounts {
+  margin-left: auto;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.goal-current { font-weight: 600; }
+.goal-target { font-size: 12px; color: var(--text-faint); }
+.goal-bar {
+  height: 8px; border-radius: 6px;
+  background: var(--bg-input);
+  overflow: hidden;
+}
+.goal-fill { height: 100%; border-radius: 6px; transition: width 0.3s ease; }
+.goal-meta {
+  display: flex; justify-content: space-between;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+.goal-meta .goal-pace.behind { color: var(--warn); }
+.goal-meta .goal-pace.ahead { color: var(--success); }
+.goal-meta .goal-pace.done { color: var(--success); }
+
+/* INVESTMENTS */
+.investments-list { display: flex; flex-direction: column; }
+.inv-row {
+  display: grid;
+  grid-template-columns: 60px 1.5fr 1fr 1fr 1fr 1fr;
+  gap: 12px;
+  padding: 12px 8px;
+  border-bottom: 1px solid var(--border);
+  align-items: center;
+  cursor: pointer;
+  transition: background 0.1s;
+  font-variant-numeric: tabular-nums;
+}
+.inv-row:last-child { border-bottom: none; }
+.inv-row:hover { background: var(--bg-input); }
+.inv-row.inv-header {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--text-faint); font-weight: 600; cursor: default;
+  border-bottom: 1px solid var(--border-strong);
+}
+.inv-row.inv-header:hover { background: transparent; }
+.inv-ticker {
+  font-weight: 700; font-size: 13px;
+  background: var(--bg-input);
+  padding: 4px 6px; border-radius: 6px;
+  text-align: center;
+  letter-spacing: 0.04em;
+}
+.inv-name { font-weight: 500; }
+.inv-account { font-size: 12px; color: var(--text-faint); margin-top: 2px; }
+.inv-gain { font-weight: 600; }
+.inv-gain.up { color: var(--success); }
+.inv-gain.down { color: var(--danger); }
 
 /* CSV IMPORT MODAL */
 .modal-wide { max-width: 680px; }

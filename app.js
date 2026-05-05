@@ -43,6 +43,8 @@
           categories: parsed.categories ?? DEFAULT_CATEGORIES.slice(),
           transactions: parsed.transactions ?? [],
           budgets: parsed.budgets ?? {},
+          goals: parsed.goals ?? [],
+          investments: parsed.investments ?? [],
           settings: { currency: 'USD', ...(parsed.settings ?? {}) },
         };
       }
@@ -53,6 +55,8 @@
       categories: DEFAULT_CATEGORIES.slice(),
       transactions: [],
       budgets: {},
+      goals: [],
+      investments: [],
       settings: { currency: 'USD' },
     };
   }
@@ -144,7 +148,10 @@
     renderMonthLabel();
     if (currentView === 'dashboard') renderDashboard();
     else if (currentView === 'transactions') renderTransactions();
+    else if (currentView === 'cashflow') renderCashFlow();
     else if (currentView === 'budgets') renderBudgets();
+    else if (currentView === 'goals') renderGoals();
+    else if (currentView === 'investments') renderInvestments();
     else if (currentView === 'categories') renderCategories();
     else if (currentView === 'settings') renderSettings();
   }
@@ -600,6 +607,367 @@
     renderCurrentView();
   }
 
+  // ---------- RENDER: CASH FLOW ----------
+  let cashflowChart = null;
+
+  function getMonthlyTotals(numMonths = 6) {
+    const months = [];
+    const now = new Date();
+    for (let i = numMonths - 1; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      months.push(yyyymm(d));
+    }
+    return months.map(m => {
+      const tx = txInMonth(m);
+      const income = tx.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+      const spend = tx.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+      return { month: m, income, spend, net: income - spend };
+    });
+  }
+
+  function renderCashFlow() {
+    const months = getMonthlyTotals(6);
+    const totalIncome = months.reduce((s, m) => s + m.income, 0);
+    const totalSpend = months.reduce((s, m) => s + m.spend, 0);
+    const totalNet = totalIncome - totalSpend;
+    const savingsRate = totalIncome > 0 ? (totalNet / totalIncome) * 100 : null;
+
+    document.getElementById('cf-income').textContent = fmtMoney(totalIncome);
+    document.getElementById('cf-spend').textContent = fmtMoney(totalSpend);
+    const netEl = document.getElementById('cf-net');
+    netEl.textContent = fmtMoney(totalNet, { signed: true });
+    netEl.classList.toggle('income', totalNet > 0);
+    netEl.classList.toggle('expense', totalNet < 0);
+
+    const rateEl = document.getElementById('cf-rate');
+    if (savingsRate === null) {
+      rateEl.textContent = '—';
+      rateEl.classList.remove('income', 'expense');
+    } else {
+      rateEl.textContent = `${savingsRate.toFixed(0)}%`;
+      rateEl.classList.toggle('income', savingsRate >= 0);
+      rateEl.classList.toggle('expense', savingsRate < 0);
+    }
+
+    // Chart
+    const wrap = document.querySelector('#view-cashflow .chart-wrap');
+    const hasData = months.some(m => m.income > 0 || m.spend > 0);
+    if (!hasData) {
+      wrap.classList.add('empty');
+      if (cashflowChart) { cashflowChart.destroy(); cashflowChart = null; }
+    } else {
+      wrap.classList.remove('empty');
+      const ctx = document.getElementById('chart-cashflow').getContext('2d');
+      const labels = months.map(m => parseYYYYMM(m.month).toLocaleDateString(undefined, { month: 'short' }));
+      if (cashflowChart) cashflowChart.destroy();
+      cashflowChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels,
+          datasets: [
+            { label: 'Income', data: months.map(m => m.income), backgroundColor: '#34d399', borderRadius: 4 },
+            { label: 'Spend',  data: months.map(m => m.spend),  backgroundColor: '#f87171', borderRadius: 4 },
+          ],
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: {
+            legend: { labels: { color: '#9aa1b2', boxWidth: 12, padding: 10 } },
+            tooltip: { callbacks: { label: (c) => `${c.dataset.label}: ${fmtMoney(c.parsed.y)}` } },
+          },
+          scales: {
+            x: { ticks: { color: '#9aa1b2' }, grid: { color: '#242833' } },
+            y: { ticks: { color: '#9aa1b2', callback: (v) => fmtMoney(v).replace(/\.\d+/, '') }, grid: { color: '#242833' } },
+          },
+        },
+      });
+    }
+
+    // Breakdown table
+    const headerRow = `
+      <div class="cf-row cf-header">
+        <div>Month</div><div>Income</div><div>Spend</div><div>Net</div><div>Savings rate</div>
+      </div>`;
+    const rows = [...months].reverse().map(m => {
+      const rate = m.income > 0 ? (m.net / m.income) * 100 : null;
+      return `
+        <div class="cf-row">
+          <div class="cf-month">${escapeHTML(monthLabel(m.month))}</div>
+          <div class="cf-income-cell">${fmtMoney(m.income)}</div>
+          <div class="cf-spend-cell">${fmtMoney(m.spend)}</div>
+          <div class="cf-net-cell ${m.net >= 0 ? 'cf-income-cell' : 'cf-spend-cell'}">${fmtMoney(m.net, { signed: true })}</div>
+          <div class="cf-rate-cell">${rate === null ? '—' : rate.toFixed(0) + '%'}</div>
+        </div>`;
+    }).join('');
+    document.getElementById('cashflow-table').innerHTML = headerRow + rows;
+  }
+
+  // ---------- RENDER: GOALS ----------
+  function renderGoals() {
+    const goals = state.goals;
+    const totalSaved = goals.reduce((s, g) => s + (g.currentAmount || 0), 0);
+    const totalTarget = goals.reduce((s, g) => s + (g.targetAmount || 0), 0);
+    const completeCount = goals.filter(g => g.currentAmount >= g.targetAmount && g.targetAmount > 0).length;
+
+    document.getElementById('goal-saved').textContent = fmtMoney(totalSaved);
+    document.getElementById('goal-target').textContent = fmtMoney(totalTarget);
+    document.getElementById('goal-complete').textContent = `${completeCount} / ${goals.length}`;
+
+    const container = document.getElementById('goals-list');
+    if (goals.length === 0) {
+      container.innerHTML = `<div class="empty-state">No goals yet. Create one to start tracking your savings.</div>`;
+      return;
+    }
+
+    container.innerHTML = goals.map(g => {
+      const target = Number(g.targetAmount) || 0;
+      const current = Number(g.currentAmount) || 0;
+      const pct = target > 0 ? Math.min(100, (current / target) * 100) : 0;
+      const remaining = Math.max(0, target - current);
+      const done = target > 0 && current >= target;
+
+      let paceText = '';
+      let paceClass = '';
+      if (done) {
+        paceText = 'Goal reached!';
+        paceClass = 'done';
+      } else if (g.deadline) {
+        const deadline = new Date(g.deadline);
+        const now = new Date();
+        const daysLeft = Math.ceil((deadline - now) / (1000 * 60 * 60 * 24));
+        if (daysLeft <= 0) {
+          paceText = `Past target date · ${fmtMoney(remaining)} short`;
+          paceClass = 'behind';
+        } else {
+          const monthsLeft = Math.max(1, Math.round(daysLeft / 30));
+          const perMonth = remaining / monthsLeft;
+          paceText = `${fmtMoney(perMonth)}/mo for ${monthsLeft} more month${monthsLeft === 1 ? '' : 's'}`;
+        }
+      } else {
+        paceText = `${fmtMoney(remaining)} to go`;
+      }
+
+      const deadlineLabel = g.deadline
+        ? new Date(g.deadline).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })
+        : 'No target date';
+
+      const fillColor = done ? 'var(--success)' : (g.color || 'var(--accent)');
+
+      return `
+        <div class="goal-card" data-goal-id="${g.id}">
+          <div class="goal-head">
+            <div class="goal-icon" style="background:${g.color || '#8b5cf6'}">${escapeHTML(g.icon || '★')}</div>
+            <div>
+              <div class="goal-name">${escapeHTML(g.name)}</div>
+              <div class="goal-deadline">${escapeHTML(deadlineLabel)}</div>
+            </div>
+            <div class="goal-amounts">
+              <div class="goal-current">${fmtMoney(current)}</div>
+              <div class="goal-target">of ${fmtMoney(target)}</div>
+            </div>
+          </div>
+          <div class="goal-bar"><div class="goal-fill" style="width:${pct}%;background:${fillColor}"></div></div>
+          <div class="goal-meta">
+            <span>${pct.toFixed(0)}% complete</span>
+            <span class="goal-pace ${paceClass}">${escapeHTML(paceText)}</span>
+          </div>
+        </div>`;
+    }).join('');
+
+    container.querySelectorAll('.goal-card').forEach(card => {
+      card.addEventListener('click', () => {
+        const goal = state.goals.find(g => g.id === card.dataset.goalId);
+        if (goal) openGoalModal(goal);
+      });
+    });
+  }
+
+  // ---------- RENDER: INVESTMENTS ----------
+  function renderInvestments() {
+    const list = state.investments;
+    const totalValue = list.reduce((s, i) => s + (Number(i.currentValue) || 0), 0);
+    const totalCost = list.reduce((s, i) => s + (Number(i.costBasis) || 0), 0);
+    const gain = totalValue - totalCost;
+    const ret = totalCost > 0 ? (gain / totalCost) * 100 : null;
+
+    document.getElementById('inv-value').textContent = fmtMoney(totalValue);
+    document.getElementById('inv-cost').textContent = fmtMoney(totalCost);
+
+    const gainEl = document.getElementById('inv-gain');
+    gainEl.textContent = fmtMoney(gain, { signed: true });
+    gainEl.classList.toggle('income', gain > 0);
+    gainEl.classList.toggle('expense', gain < 0);
+
+    const retEl = document.getElementById('inv-return');
+    if (ret === null) {
+      retEl.textContent = '—';
+      retEl.classList.remove('income', 'expense');
+    } else {
+      retEl.textContent = `${ret >= 0 ? '+' : ''}${ret.toFixed(2)}%`;
+      retEl.classList.toggle('income', ret >= 0);
+      retEl.classList.toggle('expense', ret < 0);
+    }
+
+    const container = document.getElementById('investments-list');
+    if (list.length === 0) {
+      container.innerHTML = `<div class="empty-state">No holdings yet. Add one to start tracking your portfolio.</div>`;
+      return;
+    }
+
+    const headerRow = `
+      <div class="inv-row inv-header">
+        <div>Symbol</div><div>Name</div><div>Shares</div>
+        <div>Cost basis</div><div>Value</div><div>Gain / loss</div>
+      </div>`;
+
+    const rows = list.map(i => {
+      const cost = Number(i.costBasis) || 0;
+      const val = Number(i.currentValue) || 0;
+      const g = val - cost;
+      const pct = cost > 0 ? (g / cost) * 100 : 0;
+      const dir = g > 0 ? 'up' : g < 0 ? 'down' : '';
+      return `
+        <div class="inv-row" data-inv-id="${i.id}">
+          <div class="inv-ticker">${escapeHTML((i.ticker || '—').toUpperCase())}</div>
+          <div>
+            <div class="inv-name">${escapeHTML(i.name || '')}</div>
+            ${i.account ? `<div class="inv-account">${escapeHTML(i.account)}</div>` : ''}
+          </div>
+          <div>${i.shares ? Number(i.shares).toLocaleString(undefined, { maximumFractionDigits: 4 }) : '—'}</div>
+          <div>${fmtMoney(cost)}</div>
+          <div>${fmtMoney(val)}</div>
+          <div class="inv-gain ${dir}">${fmtMoney(g, { signed: true })}<br><span style="font-size:11px;font-weight:500">${cost > 0 ? (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%' : ''}</span></div>
+        </div>`;
+    }).join('');
+
+    container.innerHTML = headerRow + rows;
+    container.querySelectorAll('.inv-row[data-inv-id]').forEach(row => {
+      row.addEventListener('click', () => {
+        const inv = state.investments.find(i => i.id === row.dataset.invId);
+        if (inv) openInvestmentModal(inv);
+      });
+    });
+  }
+
+  // ---------- MODALS: GOAL ----------
+  function openGoalModal(goal = null) {
+    const modal = document.getElementById('goal-modal');
+    const form = document.getElementById('goal-form');
+    const title = document.getElementById('goal-modal-title');
+    const deleteBtn = document.getElementById('goal-delete');
+
+    if (goal) {
+      title.textContent = 'Edit goal';
+      form.elements.id.value = goal.id;
+      form.elements.name.value = goal.name;
+      form.elements.targetAmount.value = goal.targetAmount;
+      form.elements.currentAmount.value = goal.currentAmount || 0;
+      form.elements.deadline.value = goal.deadline || '';
+      form.elements.color.value = goal.color || '#8b5cf6';
+      form.elements.icon.value = goal.icon || '';
+      deleteBtn.hidden = false;
+    } else {
+      title.textContent = 'New goal';
+      form.reset();
+      form.elements.id.value = '';
+      form.elements.color.value = '#8b5cf6';
+      deleteBtn.hidden = true;
+    }
+    modal.hidden = false;
+    setTimeout(() => form.elements.name.focus(), 50);
+  }
+
+  function handleGoalSubmit(e) {
+    e.preventDefault();
+    const data = Object.fromEntries(new FormData(e.currentTarget));
+    const goal = {
+      id: data.id || uid('goal'),
+      name: data.name.trim(),
+      targetAmount: parseFloat(data.targetAmount) || 0,
+      currentAmount: parseFloat(data.currentAmount) || 0,
+      deadline: data.deadline || null,
+      color: data.color,
+      icon: (data.icon || '').trim() || '★',
+    };
+    if (!goal.name || goal.targetAmount <= 0) return;
+    const idx = state.goals.findIndex(g => g.id === goal.id);
+    if (idx >= 0) state.goals[idx] = goal;
+    else state.goals.push(goal);
+    saveState();
+    closeModals();
+    showToast(idx >= 0 ? 'Goal updated' : 'Goal created');
+    renderCurrentView();
+  }
+
+  function handleGoalDelete() {
+    const id = document.getElementById('goal-form').elements.id.value;
+    if (!id || !confirm('Delete this goal?')) return;
+    state.goals = state.goals.filter(g => g.id !== id);
+    saveState();
+    closeModals();
+    showToast('Goal deleted');
+    renderCurrentView();
+  }
+
+  // ---------- MODALS: INVESTMENT ----------
+  function openInvestmentModal(inv = null) {
+    const modal = document.getElementById('inv-modal');
+    const form = document.getElementById('inv-form');
+    const title = document.getElementById('inv-modal-title');
+    const deleteBtn = document.getElementById('inv-delete');
+
+    if (inv) {
+      title.textContent = 'Edit holding';
+      form.elements.id.value = inv.id;
+      form.elements.ticker.value = inv.ticker || '';
+      form.elements.account.value = inv.account || '';
+      form.elements.name.value = inv.name || '';
+      form.elements.shares.value = inv.shares || '';
+      form.elements.costBasis.value = inv.costBasis || '';
+      form.elements.currentValue.value = inv.currentValue || '';
+      deleteBtn.hidden = false;
+    } else {
+      title.textContent = 'Add holding';
+      form.reset();
+      form.elements.id.value = '';
+      deleteBtn.hidden = true;
+    }
+    modal.hidden = false;
+    setTimeout(() => form.elements.ticker.focus(), 50);
+  }
+
+  function handleInvestmentSubmit(e) {
+    e.preventDefault();
+    const data = Object.fromEntries(new FormData(e.currentTarget));
+    const inv = {
+      id: data.id || uid('inv'),
+      ticker: (data.ticker || '').trim().toUpperCase(),
+      account: (data.account || '').trim(),
+      name: data.name.trim(),
+      shares: parseFloat(data.shares) || 0,
+      costBasis: parseFloat(data.costBasis) || 0,
+      currentValue: parseFloat(data.currentValue) || 0,
+    };
+    if (!inv.name || inv.costBasis <= 0) return;
+    const idx = state.investments.findIndex(i => i.id === inv.id);
+    if (idx >= 0) state.investments[idx] = inv;
+    else state.investments.push(inv);
+    saveState();
+    closeModals();
+    showToast(idx >= 0 ? 'Holding updated' : 'Holding added');
+    renderCurrentView();
+  }
+
+  function handleInvestmentDelete() {
+    const id = document.getElementById('inv-form').elements.id.value;
+    if (!id || !confirm('Delete this holding?')) return;
+    state.investments = state.investments.filter(i => i.id !== id);
+    saveState();
+    closeModals();
+    showToast('Holding deleted');
+    renderCurrentView();
+  }
+
   // ---------- CSV IMPORT — bank detection + mapping modal ----------
 
   const BANK_FORMATS = [
@@ -856,6 +1224,8 @@
         categories: data.categories,
         transactions: data.transactions ?? [],
         budgets: data.budgets ?? {},
+        goals: data.goals ?? [],
+        investments: data.investments ?? [],
         settings: { currency: 'USD', ...(data.settings ?? {}) },
       };
       saveState();
@@ -983,6 +1353,12 @@
     document.querySelectorAll('[data-action="add-category"]').forEach(btn => {
       btn.addEventListener('click', () => openCategoryModal());
     });
+    document.querySelectorAll('[data-action="add-goal"]').forEach(btn => {
+      btn.addEventListener('click', () => openGoalModal());
+    });
+    document.querySelectorAll('[data-action="add-investment"]').forEach(btn => {
+      btn.addEventListener('click', () => openInvestmentModal());
+    });
 
     // Modal close
     document.querySelectorAll('[data-close-modal]').forEach(el => {
@@ -1000,6 +1376,10 @@
     document.getElementById('tx-delete').addEventListener('click', handleTxDelete);
     document.getElementById('cat-form').addEventListener('submit', handleCategorySubmit);
     document.getElementById('cat-delete').addEventListener('click', handleCategoryDelete);
+    document.getElementById('goal-form').addEventListener('submit', handleGoalSubmit);
+    document.getElementById('goal-delete').addEventListener('click', handleGoalDelete);
+    document.getElementById('inv-form').addEventListener('submit', handleInvestmentSubmit);
+    document.getElementById('inv-delete').addEventListener('click', handleInvestmentDelete);
 
     // Filters
     ['tx-search', 'tx-filter-category', 'tx-filter-type'].forEach(id => {

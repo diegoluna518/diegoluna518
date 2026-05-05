@@ -28,8 +28,17 @@
       <button class="nav-item" data-view="transactions">
         <span class="nav-icon">≡</span> Transactions
       </button>
+      <button class="nav-item" data-view="cashflow">
+        <span class="nav-icon">↔</span> Cash Flow
+      </button>
       <button class="nav-item" data-view="budgets">
         <span class="nav-icon">◇</span> Budgets
+      </button>
+      <button class="nav-item" data-view="goals">
+        <span class="nav-icon">★</span> Goals
+      </button>
+      <button class="nav-item" data-view="investments">
+        <span class="nav-icon">▲</span> Investments
       </button>
       <button class="nav-item" data-view="categories">
         <span class="nav-icon">◎</span> Categories
@@ -157,6 +166,112 @@
 
       <div class="panel">
         <div id="categories-list" class="categories-list"></div>
+      </div>
+    </section>
+
+    <!-- CASH FLOW -->
+    <section id="view-cashflow" class="view">
+      <header class="view-header">
+        <div>
+          <h1>Cash Flow</h1>
+          <p class="subtitle">Money in vs money out across the last 6 months.</p>
+        </div>
+      </header>
+
+      <div class="stat-grid">
+        <div class="stat-card">
+          <div class="stat-label">Income (6mo)</div>
+          <div class="stat-value income" id="cf-income">$0.00</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Spend (6mo)</div>
+          <div class="stat-value expense" id="cf-spend">$0.00</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Net Income (6mo)</div>
+          <div class="stat-value" id="cf-net">$0.00</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Avg Savings Rate</div>
+          <div class="stat-value" id="cf-rate">—</div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header"><h2>Monthly trend</h2></div>
+        <div class="chart-wrap" style="height:280px">
+          <canvas id="chart-cashflow"></canvas>
+          <div class="chart-empty" id="chart-cashflow-empty">No transactions in the last 6 months.</div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header"><h2>Monthly breakdown</h2></div>
+        <div id="cashflow-table" class="cashflow-table"></div>
+      </div>
+    </section>
+
+    <!-- GOALS -->
+    <section id="view-goals" class="view">
+      <header class="view-header">
+        <div>
+          <h1>Goals</h1>
+          <p class="subtitle">Track savings targets and stay on pace.</p>
+        </div>
+        <button class="btn primary" data-action="add-goal">+ New Goal</button>
+      </header>
+
+      <div class="stat-grid stat-grid-3">
+        <div class="stat-card">
+          <div class="stat-label">Total Saved</div>
+          <div class="stat-value income" id="goal-saved">$0.00</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Total Targets</div>
+          <div class="stat-value" id="goal-target">$0.00</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Goals Complete</div>
+          <div class="stat-value" id="goal-complete">0 / 0</div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div id="goals-list" class="goals-list"></div>
+      </div>
+    </section>
+
+    <!-- INVESTMENTS -->
+    <section id="view-investments" class="view">
+      <header class="view-header">
+        <div>
+          <h1>Investments</h1>
+          <p class="subtitle">Track holdings manually for now — brokerage sync coming later.</p>
+        </div>
+        <button class="btn primary" data-action="add-investment">+ Add Holding</button>
+      </header>
+
+      <div class="stat-grid">
+        <div class="stat-card">
+          <div class="stat-label">Portfolio Value</div>
+          <div class="stat-value" id="inv-value">$0.00</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Cost Basis</div>
+          <div class="stat-value" id="inv-cost">$0.00</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Gain / Loss</div>
+          <div class="stat-value" id="inv-gain">$0.00</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Return</div>
+          <div class="stat-value" id="inv-return">—</div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div id="investments-list" class="investments-list"></div>
       </div>
     </section>
 
@@ -378,6 +493,100 @@
         <button class="btn" data-close-modal>Cancel</button>
         <button class="btn primary" id="btn-do-import">Import</button>
       </footer>
+    </div>
+  </div>
+
+  <!-- GOAL MODAL -->
+  <div class="modal-backdrop" id="goal-modal" hidden>
+    <div class="modal">
+      <header class="modal-header">
+        <h2 id="goal-modal-title">New goal</h2>
+        <button class="icon-btn" data-close-modal>×</button>
+      </header>
+      <form id="goal-form" class="modal-body">
+        <input type="hidden" name="id" />
+        <label class="field">
+          <span>Goal name</span>
+          <input type="text" name="name" required placeholder="e.g. Vacation fund" />
+        </label>
+        <div class="field-row">
+          <label class="field">
+            <span>Target amount</span>
+            <input type="number" name="targetAmount" step="0.01" min="0" required placeholder="0.00" />
+          </label>
+          <label class="field">
+            <span>Saved so far</span>
+            <input type="number" name="currentAmount" step="0.01" min="0" placeholder="0.00" />
+          </label>
+        </div>
+        <div class="field-row">
+          <label class="field">
+            <span>Target date (optional)</span>
+            <input type="date" name="deadline" />
+          </label>
+          <label class="field">
+            <span>Color</span>
+            <input type="color" name="color" value="#8b5cf6" />
+          </label>
+        </div>
+        <label class="field">
+          <span>Icon (emoji or character)</span>
+          <input type="text" name="icon" maxlength="2" placeholder="🏖" />
+        </label>
+        <footer class="modal-footer">
+          <button type="button" class="btn ghost" id="goal-delete" hidden>Delete</button>
+          <div class="spacer"></div>
+          <button type="button" class="btn" data-close-modal>Cancel</button>
+          <button type="submit" class="btn primary">Save</button>
+        </footer>
+      </form>
+    </div>
+  </div>
+
+  <!-- INVESTMENT MODAL -->
+  <div class="modal-backdrop" id="inv-modal" hidden>
+    <div class="modal">
+      <header class="modal-header">
+        <h2 id="inv-modal-title">Add holding</h2>
+        <button class="icon-btn" data-close-modal>×</button>
+      </header>
+      <form id="inv-form" class="modal-body">
+        <input type="hidden" name="id" />
+        <div class="field-row">
+          <label class="field">
+            <span>Ticker / symbol</span>
+            <input type="text" name="ticker" placeholder="AAPL" style="text-transform:uppercase" />
+          </label>
+          <label class="field">
+            <span>Account (optional)</span>
+            <input type="text" name="account" placeholder="Robinhood" />
+          </label>
+        </div>
+        <label class="field">
+          <span>Name</span>
+          <input type="text" name="name" required placeholder="Apple Inc." />
+        </label>
+        <div class="field-row">
+          <label class="field">
+            <span>Shares / units</span>
+            <input type="number" name="shares" step="0.0001" min="0" placeholder="0" />
+          </label>
+          <label class="field">
+            <span>Cost basis (total)</span>
+            <input type="number" name="costBasis" step="0.01" min="0" required placeholder="0.00" />
+          </label>
+        </div>
+        <label class="field">
+          <span>Current value (total)</span>
+          <input type="number" name="currentValue" step="0.01" min="0" required placeholder="0.00" />
+        </label>
+        <footer class="modal-footer">
+          <button type="button" class="btn ghost" id="inv-delete" hidden>Delete</button>
+          <div class="spacer"></div>
+          <button type="button" class="btn" data-close-modal>Cancel</button>
+          <button type="submit" class="btn primary">Save</button>
+        </footer>
+      </form>
     </div>
   </div>
 
