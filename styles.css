@@ -653,6 +653,27 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
 
 .text-faint { color: var(--text-faint); font-weight: 400; font-size: 13px; }
 
+.form-error {
+  background: var(--danger-soft);
+  border: 1px solid var(--danger);
+  color: var(--danger);
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+}
+.form-error[hidden] { display: none; }
+
+.goal-account-badge {
+  display: inline-block;
+  font-size: 11px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.06em;
+  padding: 2px 7px; border-radius: 5px;
+  background: var(--bg-input);
+  color: var(--text-dim);
+  margin-top: 3px;
+}
+.goal-contribution { font-size: 12px; color: var(--text-faint); margin-top: 2px; }
+
 /* DRAG-DROP OVERLAY */
 .drop-overlay {
   position: fixed; inset: 0;

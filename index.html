@@ -505,14 +505,30 @@
       </header>
       <form id="goal-form" class="modal-body">
         <input type="hidden" name="id" />
+        <div id="goal-form-error" class="form-error" hidden></div>
         <label class="field">
           <span>Goal name</span>
-          <input type="text" name="name" required placeholder="e.g. Vacation fund" />
+          <input type="text" name="name" placeholder="e.g. Vacation fund" />
         </label>
         <div class="field-row">
           <label class="field">
+            <span>Account type</span>
+            <select name="accountType">
+              <option value="savings">Savings account</option>
+              <option value="hysa">HYSA</option>
+              <option value="checking">Checking account</option>
+              <option value="other">Other</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Color</span>
+            <input type="color" name="color" value="#8b5cf6" />
+          </label>
+        </div>
+        <div class="field-row">
+          <label class="field">
             <span>Target amount</span>
-            <input type="number" name="targetAmount" step="0.01" min="0" required placeholder="0.00" />
+            <input type="number" name="targetAmount" step="0.01" min="0" placeholder="0.00" />
           </label>
           <label class="field">
             <span>Saved so far</span>
@@ -521,23 +537,23 @@
         </div>
         <div class="field-row">
           <label class="field">
-            <span>Target date (optional)</span>
-            <input type="date" name="deadline" />
+            <span>Monthly contribution target</span>
+            <input type="number" name="monthlyContribution" step="0.01" min="0" placeholder="0.00" />
           </label>
           <label class="field">
-            <span>Color</span>
-            <input type="color" name="color" value="#8b5cf6" />
+            <span>Target date (optional)</span>
+            <input type="date" name="deadline" />
           </label>
         </div>
         <label class="field">
           <span>Icon (emoji or character)</span>
-          <input type="text" name="icon" maxlength="2" placeholder="🏖" />
+          <input type="text" name="icon" maxlength="2" placeholder="🏦" />
         </label>
         <footer class="modal-footer">
           <button type="button" class="btn ghost" id="goal-delete" hidden>Delete</button>
           <div class="spacer"></div>
           <button type="button" class="btn" data-close-modal>Cancel</button>
-          <button type="submit" class="btn primary">Save</button>
+          <button type="submit" class="btn primary">Save goal</button>
         </footer>
       </form>
     </div>
@@ -552,39 +568,41 @@
       </header>
       <form id="inv-form" class="modal-body">
         <input type="hidden" name="id" />
+        <div id="inv-form-error" class="form-error" hidden></div>
+        <p class="hint" style="margin-bottom:4px">Enter your position details. You can update current value any time to track performance.</p>
         <div class="field-row">
           <label class="field">
             <span>Ticker / symbol</span>
-            <input type="text" name="ticker" placeholder="AAPL" style="text-transform:uppercase" />
+            <input type="text" name="ticker" placeholder="e.g. AAPL" style="text-transform:uppercase" />
           </label>
           <label class="field">
-            <span>Account (optional)</span>
-            <input type="text" name="account" placeholder="Robinhood" />
+            <span>Brokerage / account</span>
+            <input type="text" name="account" placeholder="e.g. Robinhood" />
           </label>
         </div>
         <label class="field">
-          <span>Name</span>
-          <input type="text" name="name" required placeholder="Apple Inc." />
+          <span>Name / description</span>
+          <input type="text" name="name" placeholder="e.g. Apple Inc." />
+        </label>
+        <label class="field">
+          <span>Shares / units (optional)</span>
+          <input type="number" name="shares" step="0.0001" min="0" placeholder="0" />
         </label>
         <div class="field-row">
           <label class="field">
-            <span>Shares / units</span>
-            <input type="number" name="shares" step="0.0001" min="0" placeholder="0" />
+            <span>What you paid (cost basis)</span>
+            <input type="number" name="costBasis" step="0.01" min="0" placeholder="0.00" />
           </label>
           <label class="field">
-            <span>Cost basis (total)</span>
-            <input type="number" name="costBasis" step="0.01" min="0" required placeholder="0.00" />
+            <span>Current value today</span>
+            <input type="number" name="currentValue" step="0.01" min="0" placeholder="0.00" />
           </label>
         </div>
-        <label class="field">
-          <span>Current value (total)</span>
-          <input type="number" name="currentValue" step="0.01" min="0" required placeholder="0.00" />
-        </label>
         <footer class="modal-footer">
           <button type="button" class="btn ghost" id="inv-delete" hidden>Delete</button>
           <div class="spacer"></div>
           <button type="button" class="btn" data-close-modal>Cancel</button>
-          <button type="submit" class="btn primary">Save</button>
+          <button type="submit" class="btn primary">Save holding</button>
         </footer>
       </form>
     </div>

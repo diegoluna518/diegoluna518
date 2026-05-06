@@ -749,21 +749,25 @@
 
       const deadlineLabel = g.deadline
         ? new Date(g.deadline).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })
-        : 'No target date';
+        : null;
 
+      const ACCOUNT_LABELS = { hysa: 'HYSA', checking: 'Checking', savings: 'Savings', other: 'Other' };
+      const accountLabel = ACCOUNT_LABELS[g.accountType] || 'Savings';
+      const monthly = Number(g.monthlyContribution) || 0;
       const fillColor = done ? 'var(--success)' : (g.color || 'var(--accent)');
 
       return `
         <div class="goal-card" data-goal-id="${g.id}">
           <div class="goal-head">
-            <div class="goal-icon" style="background:${g.color || '#8b5cf6'}">${escapeHTML(g.icon || '★')}</div>
+            <div class="goal-icon" style="background:${g.color || '#8b5cf6'}">${escapeHTML(g.icon || '🏦')}</div>
             <div>
               <div class="goal-name">${escapeHTML(g.name)}</div>
-              <div class="goal-deadline">${escapeHTML(deadlineLabel)}</div>
+              <span class="goal-account-badge">${escapeHTML(accountLabel)}</span>
+              ${monthly > 0 ? `<div class="goal-contribution">${fmtMoney(monthly)}/mo contribution target</div>` : ''}
             </div>
             <div class="goal-amounts">
               <div class="goal-current">${fmtMoney(current)}</div>
-              <div class="goal-target">of ${fmtMoney(target)}</div>
+              <div class="goal-target">of ${fmtMoney(target)}${deadlineLabel ? ' · ' + escapeHTML(deadlineLabel) : ''}</div>
             </div>
           </div>
           <div class="goal-bar"><div class="goal-fill" style="width:${pct}%;background:${fillColor}"></div></div>
@@ -850,46 +854,64 @@
   }
 
   // ---------- MODALS: GOAL ----------
+  function showFormError(errorElId, msg) {
+    const el = document.getElementById(errorElId);
+    if (!el) return;
+    if (msg) { el.textContent = msg; el.hidden = false; }
+    else el.hidden = true;
+  }
+
   function openGoalModal(goal = null) {
     const modal = document.getElementById('goal-modal');
     const form = document.getElementById('goal-form');
     const title = document.getElementById('goal-modal-title');
     const deleteBtn = document.getElementById('goal-delete');
 
+    showFormError('goal-form-error', '');
     if (goal) {
       title.textContent = 'Edit goal';
-      form.elements.id.value = goal.id;
-      form.elements.name.value = goal.name;
-      form.elements.targetAmount.value = goal.targetAmount;
-      form.elements.currentAmount.value = goal.currentAmount || 0;
-      form.elements.deadline.value = goal.deadline || '';
-      form.elements.color.value = goal.color || '#8b5cf6';
-      form.elements.icon.value = goal.icon || '';
+      form['id'].value = goal.id;
+      form['name'].value = goal.name;
+      form['accountType'].value = goal.accountType || 'savings';
+      form['targetAmount'].value = goal.targetAmount || '';
+      form['currentAmount'].value = goal.currentAmount || '';
+      form['monthlyContribution'].value = goal.monthlyContribution || '';
+      form['deadline'].value = goal.deadline || '';
+      form['color'].value = goal.color || '#8b5cf6';
+      form['icon'].value = goal.icon || '';
       deleteBtn.hidden = false;
     } else {
       title.textContent = 'New goal';
       form.reset();
-      form.elements.id.value = '';
-      form.elements.color.value = '#8b5cf6';
+      form['id'].value = '';
+      form['color'].value = '#8b5cf6';
       deleteBtn.hidden = true;
     }
     modal.hidden = false;
-    setTimeout(() => form.elements.name.focus(), 50);
+    setTimeout(() => form['name'].focus(), 50);
   }
 
   function handleGoalSubmit(e) {
     e.preventDefault();
     const data = Object.fromEntries(new FormData(e.currentTarget));
+    const name = (data.name || '').trim();
+    const targetAmount = parseFloat(data.targetAmount);
+
+    if (!name) { showFormError('goal-form-error', 'Please enter a goal name.'); return; }
+    if (!targetAmount || targetAmount <= 0) { showFormError('goal-form-error', 'Please enter a target amount greater than 0.'); return; }
+
+    showFormError('goal-form-error', '');
     const goal = {
       id: data.id || uid('goal'),
-      name: data.name.trim(),
-      targetAmount: parseFloat(data.targetAmount) || 0,
+      name,
+      accountType: data.accountType || 'savings',
+      targetAmount,
       currentAmount: parseFloat(data.currentAmount) || 0,
+      monthlyContribution: parseFloat(data.monthlyContribution) || 0,
       deadline: data.deadline || null,
-      color: data.color,
-      icon: (data.icon || '').trim() || '★',
+      color: data.color || '#8b5cf6',
+      icon: (data.icon || '').trim() || '🏦',
     };
-    if (!goal.name || goal.targetAmount <= 0) return;
     const idx = state.goals.findIndex(g => g.id === goal.id);
     if (idx >= 0) state.goals[idx] = goal;
     else state.goals.push(goal);
@@ -900,7 +922,7 @@
   }
 
   function handleGoalDelete() {
-    const id = document.getElementById('goal-form').elements.id.value;
+    const id = document.getElementById('goal-form')['id'].value;
     if (!id || !confirm('Delete this goal?')) return;
     state.goals = state.goals.filter(g => g.id !== id);
     saveState();
@@ -916,39 +938,48 @@
     const title = document.getElementById('inv-modal-title');
     const deleteBtn = document.getElementById('inv-delete');
 
+    showFormError('inv-form-error', '');
     if (inv) {
       title.textContent = 'Edit holding';
-      form.elements.id.value = inv.id;
-      form.elements.ticker.value = inv.ticker || '';
-      form.elements.account.value = inv.account || '';
-      form.elements.name.value = inv.name || '';
-      form.elements.shares.value = inv.shares || '';
-      form.elements.costBasis.value = inv.costBasis || '';
-      form.elements.currentValue.value = inv.currentValue || '';
+      form['id'].value = inv.id;
+      form['ticker'].value = inv.ticker || '';
+      form['account'].value = inv.account || '';
+      form['name'].value = inv.name || '';
+      form['shares'].value = inv.shares || '';
+      form['costBasis'].value = inv.costBasis || '';
+      form['currentValue'].value = inv.currentValue || '';
       deleteBtn.hidden = false;
     } else {
       title.textContent = 'Add holding';
       form.reset();
-      form.elements.id.value = '';
+      form['id'].value = '';
       deleteBtn.hidden = true;
     }
     modal.hidden = false;
-    setTimeout(() => form.elements.ticker.focus(), 50);
+    setTimeout(() => form['ticker'].focus(), 50);
   }
 
   function handleInvestmentSubmit(e) {
     e.preventDefault();
     const data = Object.fromEntries(new FormData(e.currentTarget));
+    const name = (data.name || '').trim();
+    const costBasis = parseFloat(data.costBasis);
+    const currentValue = parseFloat(data.currentValue);
+
+    if (!name) { showFormError('inv-form-error', 'Please enter a name or description for this holding.'); return; }
+    if (!costBasis || costBasis <= 0) { showFormError('inv-form-error', 'Please enter what you paid (cost basis).'); return; }
+    if (!currentValue || currentValue <= 0) { showFormError('inv-form-error', 'Please enter the current value of this holding.'); return; }
+
+    showFormError('inv-form-error', '');
     const inv = {
       id: data.id || uid('inv'),
       ticker: (data.ticker || '').trim().toUpperCase(),
       account: (data.account || '').trim(),
-      name: data.name.trim(),
+      name,
       shares: parseFloat(data.shares) || 0,
-      costBasis: parseFloat(data.costBasis) || 0,
-      currentValue: parseFloat(data.currentValue) || 0,
+      costBasis,
+      currentValue,
     };
-    if (!inv.name || inv.costBasis <= 0) return;
     const idx = state.investments.findIndex(i => i.id === inv.id);
     if (idx >= 0) state.investments[idx] = inv;
     else state.investments.push(inv);
@@ -959,7 +990,7 @@
   }
 
   function handleInvestmentDelete() {
-    const id = document.getElementById('inv-form').elements.id.value;
+    const id = document.getElementById('inv-form')['id'].value;
     if (!id || !confirm('Delete this holding?')) return;
     state.investments = state.investments.filter(i => i.id !== id);
     saveState();
