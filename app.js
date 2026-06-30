@@ -3,6 +3,59 @@
   'use strict';
 
   const STORAGE_KEY = 'pocket-pilot/v1';
+  const API_BASE = 'http://127.0.0.1:5001';
+  let currentUser = null;
+
+  // ---------- API LAYER ----------
+  const api = {
+    async request(method, path, data) {
+      const opts = { method, credentials: 'include', headers: { 'Content-Type': 'application/json' } };
+      if (data !== undefined) opts.body = JSON.stringify(data);
+      const res = await fetch(API_BASE + path, opts);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: res.statusText }));
+        throw new Error(err.error || res.statusText);
+      }
+      return res.json();
+    },
+    get:  (path)       => api.request('GET',    path),
+    post: (path, data) => api.request('POST',   path, data),
+    put:  (path, data) => api.request('PUT',    path, data),
+    del:  (path)       => api.request('DELETE', path),
+  };
+
+  async function loadFromAPI() {
+    const [categories, transactions, budgets, goals, investments] = await Promise.all([
+      api.get('/api/categories'),
+      api.get('/api/transactions'),
+      api.get('/api/budgets'),
+      api.get('/api/goals'),
+      api.get('/api/investments'),
+    ]);
+    // Convert budgets array [{month, categoryId, amount}] → {yyyymm: {catId: amount}}
+    const budgetMap = {};
+    budgets.forEach(b => {
+      if (!budgetMap[b.month]) budgetMap[b.month] = {};
+      budgetMap[b.month][b.categoryId] = b.amount;
+    });
+    // Seed default categories for new accounts
+    let cats = categories;
+    if (cats.length === 0) {
+      for (const cat of DEFAULT_CATEGORIES) {
+        await api.post('/api/categories', cat);
+      }
+      cats = DEFAULT_CATEGORIES.slice();
+    }
+    const savedSettings = JSON.parse(localStorage.getItem('pp-settings') || '{}');
+    state = {
+      categories: cats,
+      transactions,
+      budgets: budgetMap,
+      goals,
+      investments,
+      settings: { currency: 'USD', ...savedSettings },
+    };
+  }
 
   const DEFAULT_CATEGORIES = [
     { id: 'cat-groceries',    name: 'Groceries',      type: 'expense', color: '#10b981', icon: '🛒' },
@@ -26,7 +79,7 @@
   /** @typedef {{categories:Category[],transactions:Transaction[],budgets:{[yyyymm:string]:BudgetMap},settings:{currency:string}}} AppState */
 
   /** @type {AppState} */
-  let state = loadState();
+  let state = { categories: [], transactions: [], budgets: {}, goals: [], investments: [], settings: { currency: 'USD' } };
 
   // Current month being viewed (YYYY-MM)
   let currentMonth = yyyymm(new Date());
@@ -34,34 +87,9 @@
   let categoryChart = null;
 
   // ---------- STORAGE ----------
-  function loadState() {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        return {
-          categories: parsed.categories ?? DEFAULT_CATEGORIES.slice(),
-          transactions: parsed.transactions ?? [],
-          budgets: parsed.budgets ?? {},
-          goals: parsed.goals ?? [],
-          investments: parsed.investments ?? [],
-          settings: { currency: 'USD', ...(parsed.settings ?? {}) },
-        };
-      }
-    } catch (e) {
-      console.warn('Failed to load state', e);
-    }
-    return {
-      categories: DEFAULT_CATEGORIES.slice(),
-      transactions: [],
-      budgets: {},
-      goals: [],
-      investments: [],
-      settings: { currency: 'USD' },
-    };
-  }
+  // State is now loaded from the API; only settings remain in localStorage.
   function saveState() {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    localStorage.setItem('pp-settings', JSON.stringify(state.settings));
   }
 
   // ---------- UTILS ----------
@@ -370,18 +398,20 @@
     }).join('');
 
     container.querySelectorAll('input[data-budget-cat]').forEach(input => {
-      input.addEventListener('change', () => {
+      input.addEventListener('change', async () => {
         const catId = input.dataset.budgetCat;
         const val = parseFloat(input.value);
         if (!state.budgets[currentMonth]) state.budgets[currentMonth] = {};
-        if (!val || val <= 0) {
-          delete state.budgets[currentMonth][catId];
-        } else {
-          state.budgets[currentMonth][catId] = val;
-        }
-        saveState();
-        renderBudgets();
-        showToast('Budget updated');
+        try {
+          if (!val || val <= 0) {
+            delete state.budgets[currentMonth][catId];
+          } else {
+            await api.post('/api/budgets', { month: currentMonth, categoryId: catId, amount: val });
+            state.budgets[currentMonth][catId] = val;
+          }
+          renderBudgets();
+          showToast('Budget updated');
+        } catch (err) { showToast('Error: ' + err.message); }
       });
     });
   }
@@ -487,7 +517,7 @@
     document.querySelectorAll('.modal-backdrop').forEach(m => m.hidden = true);
   }
 
-  function handleTxSubmit(e) {
+  async function handleTxSubmit(e) {
     e.preventDefault();
     const form = e.currentTarget;
     const data = Object.fromEntries(new FormData(form));
@@ -504,29 +534,33 @@
       notes: (data.notes || '').trim() || undefined,
     };
 
-    const idx = state.transactions.findIndex(t => t.id === tx.id);
-    if (idx >= 0) state.transactions[idx] = tx;
-    else state.transactions.push(tx);
-
-    saveState();
-    closeModals();
-    showToast(idx >= 0 ? 'Transaction updated' : 'Transaction added');
-
-    // Jump view to the month of this tx so user sees it
-    currentMonth = txMonth(tx);
-    renderCurrentView();
+    try {
+      const idx = state.transactions.findIndex(t => t.id === tx.id);
+      if (idx >= 0) {
+        await api.put(`/api/transactions/${tx.id}`, tx);
+        state.transactions[idx] = tx;
+      } else {
+        await api.post('/api/transactions', tx);
+        state.transactions.push(tx);
+      }
+      closeModals();
+      showToast(idx >= 0 ? 'Transaction updated' : 'Transaction added');
+      currentMonth = txMonth(tx);
+      renderCurrentView();
+    } catch (err) { showToast('Error: ' + err.message); }
   }
 
-  function handleTxDelete() {
+  async function handleTxDelete() {
     const form = document.getElementById('tx-form');
-    const id = form.elements.id.value;
-    if (!id) return;
-    if (!confirm('Delete this transaction?')) return;
-    state.transactions = state.transactions.filter(t => t.id !== id);
-    saveState();
-    closeModals();
-    showToast('Transaction deleted');
-    renderCurrentView();
+    const id = form['id'].value;
+    if (!id || !confirm('Delete this transaction?')) return;
+    try {
+      await api.del(`/api/transactions/${id}`);
+      state.transactions = state.transactions.filter(t => t.id !== id);
+      closeModals();
+      showToast('Transaction deleted');
+      renderCurrentView();
+    } catch (err) { showToast('Error: ' + err.message); }
   }
 
   // ---------- MODALS: CATEGORY ----------
@@ -555,7 +589,7 @@
     setTimeout(() => form.elements.name.focus(), 50);
   }
 
-  function handleCategorySubmit(e) {
+  async function handleCategorySubmit(e) {
     e.preventDefault();
     const form = e.currentTarget;
     const data = Object.fromEntries(new FormData(form));
@@ -567,44 +601,47 @@
       icon: (data.icon || '').trim() || '•',
     };
     if (!cat.name) return;
-    const idx = state.categories.findIndex(c => c.id === cat.id);
-    if (idx >= 0) state.categories[idx] = cat;
-    else state.categories.push(cat);
-    saveState();
-    closeModals();
-    showToast(idx >= 0 ? 'Category updated' : 'Category added');
-    refreshCategoryFilter();
-    renderCurrentView();
+    try {
+      const idx = state.categories.findIndex(c => c.id === cat.id);
+      if (idx >= 0) {
+        await api.put(`/api/categories/${cat.id}`, cat);
+        state.categories[idx] = cat;
+      } else {
+        await api.post('/api/categories', cat);
+        state.categories.push(cat);
+      }
+      closeModals();
+      showToast(idx >= 0 ? 'Category updated' : 'Category added');
+      refreshCategoryFilter();
+      renderCurrentView();
+    } catch (err) { showToast('Error: ' + err.message); }
   }
 
-  function handleCategoryDelete() {
+  async function handleCategoryDelete() {
     const form = document.getElementById('cat-form');
-    const id = form.elements.id.value;
+    const id = form['id'].value;
     if (!id) return;
     const usedBy = state.transactions.filter(t => t.categoryId === id).length;
     const msg = usedBy
       ? `This category is used by ${usedBy} transaction(s). They will be moved to "Other". Continue?`
       : 'Delete this category?';
     if (!confirm(msg)) return;
-
-    // Reassign transactions to "Other" of same type or first of same type
-    const cat = getCategory(id);
-    if (cat && usedBy) {
-      const fallback =
-        state.categories.find(c => c.type === cat.type && c.name.toLowerCase().startsWith('other') && c.id !== id) ||
-        state.categories.find(c => c.type === cat.type && c.id !== id);
-      if (fallback) {
-        state.transactions.forEach(t => { if (t.categoryId === id) t.categoryId = fallback.id; });
+    try {
+      await api.del(`/api/categories/${id}`);
+      const cat = getCategory(id);
+      if (cat && usedBy) {
+        const fallback =
+          state.categories.find(c => c.type === cat.type && c.name.toLowerCase().startsWith('other') && c.id !== id) ||
+          state.categories.find(c => c.type === cat.type && c.id !== id);
+        if (fallback) state.transactions.forEach(t => { if (t.categoryId === id) t.categoryId = fallback.id; });
       }
-    }
-    state.categories = state.categories.filter(c => c.id !== id);
-    // Remove any budgets for this category
-    Object.values(state.budgets).forEach(m => { delete m[id]; });
-    saveState();
-    closeModals();
-    showToast('Category deleted');
-    refreshCategoryFilter();
-    renderCurrentView();
+      state.categories = state.categories.filter(c => c.id !== id);
+      Object.values(state.budgets).forEach(m => { delete m[id]; });
+      closeModals();
+      showToast('Category deleted');
+      refreshCategoryFilter();
+      renderCurrentView();
+    } catch (err) { showToast('Error: ' + err.message); }
   }
 
   // ---------- RENDER: CASH FLOW ----------
@@ -891,7 +928,7 @@
     setTimeout(() => form['name'].focus(), 50);
   }
 
-  function handleGoalSubmit(e) {
+  async function handleGoalSubmit(e) {
     e.preventDefault();
     const data = Object.fromEntries(new FormData(e.currentTarget));
     const name = (data.name || '').trim();
@@ -912,23 +949,31 @@
       color: data.color || '#8b5cf6',
       icon: (data.icon || '').trim() || '🏦',
     };
-    const idx = state.goals.findIndex(g => g.id === goal.id);
-    if (idx >= 0) state.goals[idx] = goal;
-    else state.goals.push(goal);
-    saveState();
-    closeModals();
-    showToast(idx >= 0 ? 'Goal updated' : 'Goal created');
-    renderCurrentView();
+    try {
+      const idx = state.goals.findIndex(g => g.id === goal.id);
+      if (idx >= 0) {
+        await api.put(`/api/goals/${goal.id}`, goal);
+        state.goals[idx] = goal;
+      } else {
+        await api.post('/api/goals', goal);
+        state.goals.push(goal);
+      }
+      closeModals();
+      showToast(idx >= 0 ? 'Goal updated' : 'Goal created');
+      renderCurrentView();
+    } catch (err) { showFormError('goal-form-error', err.message); }
   }
 
-  function handleGoalDelete() {
+  async function handleGoalDelete() {
     const id = document.getElementById('goal-form')['id'].value;
     if (!id || !confirm('Delete this goal?')) return;
-    state.goals = state.goals.filter(g => g.id !== id);
-    saveState();
-    closeModals();
-    showToast('Goal deleted');
-    renderCurrentView();
+    try {
+      await api.del(`/api/goals/${id}`);
+      state.goals = state.goals.filter(g => g.id !== id);
+      closeModals();
+      showToast('Goal deleted');
+      renderCurrentView();
+    } catch (err) { showToast('Error: ' + err.message); }
   }
 
   // ---------- MODALS: INVESTMENT ----------
@@ -959,7 +1004,7 @@
     setTimeout(() => form['ticker'].focus(), 50);
   }
 
-  function handleInvestmentSubmit(e) {
+  async function handleInvestmentSubmit(e) {
     e.preventDefault();
     const data = Object.fromEntries(new FormData(e.currentTarget));
     const name = (data.name || '').trim();
@@ -980,23 +1025,31 @@
       costBasis,
       currentValue,
     };
-    const idx = state.investments.findIndex(i => i.id === inv.id);
-    if (idx >= 0) state.investments[idx] = inv;
-    else state.investments.push(inv);
-    saveState();
-    closeModals();
-    showToast(idx >= 0 ? 'Holding updated' : 'Holding added');
-    renderCurrentView();
+    try {
+      const idx = state.investments.findIndex(i => i.id === inv.id);
+      if (idx >= 0) {
+        await api.put(`/api/investments/${inv.id}`, inv);
+        state.investments[idx] = inv;
+      } else {
+        await api.post('/api/investments', inv);
+        state.investments.push(inv);
+      }
+      closeModals();
+      showToast(idx >= 0 ? 'Holding updated' : 'Holding added');
+      renderCurrentView();
+    } catch (err) { showFormError('inv-form-error', err.message); }
   }
 
-  function handleInvestmentDelete() {
+  async function handleInvestmentDelete() {
     const id = document.getElementById('inv-form')['id'].value;
     if (!id || !confirm('Delete this holding?')) return;
-    state.investments = state.investments.filter(i => i.id !== id);
-    saveState();
-    closeModals();
-    showToast('Holding deleted');
-    renderCurrentView();
+    try {
+      await api.del(`/api/investments/${id}`);
+      state.investments = state.investments.filter(i => i.id !== id);
+      closeModals();
+      showToast('Holding deleted');
+      renderCurrentView();
+    } catch (err) { showToast('Error: ' + err.message); }
   }
 
   // ---------- CSV IMPORT — bank detection + mapping modal ----------
@@ -1314,15 +1367,24 @@
     return rows;
   }
 
-  function resetAll() {
+  async function resetAll() {
     if (!confirm('Delete ALL transactions, budgets, categories, and settings?')) return;
     if (!confirm('Are you sure? This cannot be undone.')) return;
-    localStorage.removeItem(STORAGE_KEY);
-    state = loadState();
-    refreshCategoryFilter();
-    renderCurrentView();
-    renderSettings();
-    showToast('Everything reset');
+    try {
+      // Delete everything via API then reload fresh
+      await Promise.all([
+        ...state.transactions.map(t => api.del(`/api/transactions/${t.id}`)),
+        ...state.goals.map(g => api.del(`/api/goals/${g.id}`)),
+        ...state.investments.map(i => api.del(`/api/investments/${i.id}`)),
+        ...state.categories.map(c => api.del(`/api/categories/${c.id}`)),
+      ]);
+      localStorage.removeItem('pp-settings');
+      await loadFromAPI();
+      refreshCategoryFilter();
+      renderCurrentView();
+      renderSettings();
+      showToast('Everything reset');
+    } catch (err) { showToast('Error: ' + err.message); }
   }
 
   // ---------- MISC ----------
@@ -1356,9 +1418,82 @@
   }
 
   // ---------- BOOTSTRAP ----------
-  function init() {
+
+  function showLoginScreen() {
+    document.getElementById('login-screen').style.display = 'grid';
+  }
+  function hideLoginScreen() {
+    document.getElementById('login-screen').style.display = 'none';
+  }
+
+  function setLoginError(msg) {
+    const el = document.getElementById('login-error');
+    el.textContent = msg; el.hidden = !msg;
+  }
+
+  async function handleLogin(e) {
+    e.preventDefault();
+    setLoginError('');
+    const email    = document.getElementById('login-email').value.trim();
+    const password = document.getElementById('login-password').value;
+    try {
+      currentUser = await api.post('/api/login', { email, password });
+      hideLoginScreen();
+      await loadFromAPI();
+      initApp();
+    } catch (err) { setLoginError(err.message); }
+  }
+
+  async function handleRegister(e) {
+    e.preventDefault();
+    setLoginError('');
+    const email    = document.getElementById('register-email').value.trim();
+    const password = document.getElementById('register-password').value;
+    if (password.length < 8) { setLoginError('Password must be at least 8 characters.'); return; }
+    try {
+      currentUser = await api.post('/api/register', { email, password });
+      hideLoginScreen();
+      await loadFromAPI();
+      initApp();
+    } catch (err) { setLoginError(err.message); }
+  }
+
+  async function handleLogout() {
+    try { await api.post('/api/logout'); } catch (_) {}
+    currentUser = null;
+    state = { categories: [], transactions: [], budgets: {}, goals: [], investments: [], settings: { currency: 'USD' } };
+    showLoginScreen();
+  }
+
+  async function init() {
+    // Login screen tab switching
+    document.querySelectorAll('.login-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.login-tab').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        document.getElementById('login-form').hidden    = tab.dataset.tab !== 'login';
+        document.getElementById('register-form').hidden = tab.dataset.tab !== 'register';
+        setLoginError('');
+      });
+    });
+    document.getElementById('login-form').addEventListener('submit', handleLogin);
+    document.getElementById('register-form').addEventListener('submit', handleRegister);
+    document.getElementById('btn-logout').addEventListener('click', handleLogout);
+
+    // Check if already logged in
+    try {
+      currentUser = await api.get('/api/me');
+      hideLoginScreen();
+      await loadFromAPI();
+      initApp();
+    } catch (_) {
+      showLoginScreen();
+    }
+  }
+
+  function initApp() {
     // Nav buttons
-    document.querySelectorAll('.nav-item').forEach(btn => {
+    document.querySelectorAll('.nav-item:not(#btn-logout)').forEach(btn => {
       btn.addEventListener('click', () => setView(btn.dataset.view));
     });
     // "View all" style links inside panels
@@ -1481,6 +1616,14 @@
     renderSettings();
     renderCurrentView();
   }
+
+  // Called after successful login/register to finish app setup
+  const _initApp = initApp;
+  let appInitialized = false;
+  initApp = function () {
+    if (!appInitialized) { appInitialized = true; _initApp(); }
+    else { refreshCategoryFilter(); renderSettings(); renderCurrentView(); }
+  };
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);

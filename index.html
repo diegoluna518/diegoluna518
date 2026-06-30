@@ -48,6 +48,10 @@
       </button>
     </nav>
 
+    <button class="nav-item" id="btn-logout" style="margin-top:auto;color:var(--text-faint)">
+      <span class="nav-icon">⎋</span> Log out
+    </button>
+
     <div class="month-picker">
       <button id="prev-month" aria-label="Previous month">‹</button>
       <div id="current-month" class="current-month"></div>
@@ -617,5 +621,49 @@
   </div>
 
   <div id="toast" class="toast" hidden></div>
+
+  <!-- LOGIN SCREEN -->
+  <div id="login-screen" class="login-screen">
+    <div class="login-card">
+      <div class="login-brand">
+        <div class="brand-mark">PP</div>
+        <div>
+          <div class="brand-name">Pocket Pilot</div>
+          <div class="brand-tag">your money, your map</div>
+        </div>
+      </div>
+
+      <div id="login-error" class="form-error" hidden></div>
+
+      <div class="login-tabs">
+        <button class="login-tab active" data-tab="login">Sign in</button>
+        <button class="login-tab" data-tab="register">Create account</button>
+      </div>
+
+      <form id="login-form" class="login-form">
+        <label class="field">
+          <span>Email</span>
+          <input type="email" id="login-email" placeholder="you@example.com" autocomplete="email" />
+        </label>
+        <label class="field">
+          <span>Password</span>
+          <input type="password" id="login-password" placeholder="••••••••" autocomplete="current-password" />
+        </label>
+        <button type="submit" class="btn primary" style="width:100%;justify-content:center">Sign in</button>
+      </form>
+
+      <form id="register-form" class="login-form" hidden>
+        <label class="field">
+          <span>Email</span>
+          <input type="email" id="register-email" placeholder="you@example.com" autocomplete="email" />
+        </label>
+        <label class="field">
+          <span>Password</span>
+          <input type="password" id="register-password" placeholder="At least 8 characters" autocomplete="new-password" />
+        </label>
+        <button type="submit" class="btn primary" style="width:100%;justify-content:center">Create account</button>
+      </form>
+    </div>
+  </div>
 </body>
 </html>
