@@ -3,7 +3,7 @@
   'use strict';
 
   const STORAGE_KEY = 'pocket-pilot/v1';
-  const API_BASE = 'http://127.0.0.1:5001';
+  const API_BASE = 'https://pocket-pilot-api-634g.onrender.com';
   let currentUser = null;
 
   // ---------- API LAYER ----------
