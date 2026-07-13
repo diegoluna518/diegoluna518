@@ -9,7 +9,10 @@
   // ---------- API LAYER ----------
   const api = {
     async request(method, path, data) {
-      const opts = { method, credentials: 'include', headers: { 'Content-Type': 'application/json' } };
+      const token = localStorage.getItem('pp-auth-token');
+      const headers = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = 'Bearer ' + token;
+      const opts = { method, headers };
       if (data !== undefined) opts.body = JSON.stringify(data);
       const res = await fetch(API_BASE + path, opts);
       if (!res.ok) {
@@ -1431,13 +1434,23 @@
     el.textContent = msg; el.hidden = !msg;
   }
 
+  function showLoginTab(tab) {
+    document.querySelectorAll('.login-tab').forEach(t => t.classList.remove('active'));
+    document.querySelector(`.login-tab[data-tab="${tab}"]`).classList.add('active');
+    document.getElementById('login-form').style.display    = tab === 'login'    ? '' : 'none';
+    document.getElementById('register-form').style.display = tab === 'register' ? '' : 'none';
+    setLoginError('');
+  }
+
   async function handleLogin(e) {
     e.preventDefault();
     setLoginError('');
     const email    = document.getElementById('login-email').value.trim();
     const password = document.getElementById('login-password').value;
     try {
-      currentUser = await api.post('/api/login', { email, password });
+      const res = await api.post('/api/login', { email, password });
+      if (res.token) localStorage.setItem('pp-auth-token', res.token);
+      currentUser = res;
       hideLoginScreen();
       await loadFromAPI();
       initApp();
@@ -1451,7 +1464,9 @@
     const password = document.getElementById('register-password').value;
     if (password.length < 8) { setLoginError('Password must be at least 8 characters.'); return; }
     try {
-      currentUser = await api.post('/api/register', { email, password });
+      const res = await api.post('/api/register', { email, password });
+      if (res.token) localStorage.setItem('pp-auth-token', res.token);
+      currentUser = res;
       hideLoginScreen();
       await loadFromAPI();
       initApp();
@@ -1459,34 +1474,30 @@
   }
 
   async function handleLogout() {
-    try { await api.post('/api/logout'); } catch (_) {}
+    localStorage.removeItem('pp-auth-token');
     currentUser = null;
     state = { categories: [], transactions: [], budgets: {}, goals: [], investments: [], settings: { currency: 'USD' } };
     showLoginScreen();
+    showLoginTab('login');
   }
 
   async function init() {
-    // Login screen tab switching
     document.querySelectorAll('.login-tab').forEach(tab => {
-      tab.addEventListener('click', () => {
-        document.querySelectorAll('.login-tab').forEach(t => t.classList.remove('active'));
-        tab.classList.add('active');
-        document.getElementById('login-form').hidden    = tab.dataset.tab !== 'login';
-        document.getElementById('register-form').hidden = tab.dataset.tab !== 'register';
-        setLoginError('');
-      });
+      tab.addEventListener('click', () => showLoginTab(tab.dataset.tab));
     });
+    showLoginTab('login');
     document.getElementById('login-form').addEventListener('submit', handleLogin);
     document.getElementById('register-form').addEventListener('submit', handleRegister);
     document.getElementById('btn-logout').addEventListener('click', handleLogout);
 
-    // Check if already logged in
+    if (!localStorage.getItem('pp-auth-token')) { showLoginScreen(); return; }
     try {
       currentUser = await api.get('/api/me');
       hideLoginScreen();
       await loadFromAPI();
       initApp();
     } catch (_) {
+      localStorage.removeItem('pp-auth-token');
       showLoginScreen();
     }
   }
